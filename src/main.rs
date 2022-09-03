@@ -1,30 +1,58 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use futures_util::{FutureExt, SinkExt, StreamExt};
+use futures_util::{
+	stream::{self, SplitSink},
+	SinkExt, StreamExt,
+};
 use serde::{Deserialize, Serialize};
 use tokio::{
 	runtime::Builder,
-	sync::{mpsc, RwLock},
+	sync::RwLock,
+	time::{interval, timeout},
 };
-use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{
 	hyper::StatusCode,
-	path::{FullPath, Tail},
-	reply::Response,
 	ws::{Message, WebSocket},
 	Filter,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct MessageData {
+struct MessageData {
 	api_key: String,
 	state: String,
 }
 
-type Users = Arc<std::sync::RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>;
+// type Users = Arc<std::sync::RwLock<HashMap<String, oneshot::Sender<Message>>>>;
+type Users = Arc<RwLock<HashMap<String, SplitSink<WebSocket, Message>>>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u16)]
+#[allow(dead_code)]
+enum WsCloseCode {
+	NormalClosure = 1000,
+	GoingAway,
+	ProtocolError,
+	UnsupportedData,
+	InvalidFramePayloadData = 1007,
+	PolicyViolation,
+	MessageTooBig,
+	MandatoryExt,
+	InternalError,
+	ServiceRestart,
+	TryAgainLater,
+	InvalidResponse,
+	Unauthorized = 3000,
+}
+
+impl From<WsCloseCode> for u16 {
+	fn from(x: WsCloseCode) -> Self {
+		x as Self
+	}
+}
 
 fn main() -> Result<()> {
+	dotenv::dotenv().ok();
 	let rt = Builder::new_multi_thread().enable_all().build()?;
 
 	rt.block_on(run())?;
@@ -45,43 +73,58 @@ async fn run() -> Result<()> {
 				ws.on_upgrade(move |websocket| user_connected(websocket, users))
 			});
 
-	let index = warp::path::full()
+	let index = warp::path::end()
 		.and(warp::query::<HashMap<String, String>>())
 		.and(users)
-		.map(
-			|path: FullPath, qs: HashMap<String, String>, users: Users| {
-				dbg!(&path);
-				let state = qs.get("state");
+		.then(|qs: HashMap<String, String>, users: Users| async move {
+			let state = qs.get("state").map(String::as_str);
+			let code = if let Some(c) = qs.get("code").map(String::as_str) {
+				c
+			} else {
+				return warp::reply::with_status(
+					"No code received from api",
+					StatusCode::INTERNAL_SERVER_ERROR,
+				);
+			};
 
-				match state {
+			match state {
+				None => {
+					return warp::reply::with_status(
+						"No \"state\" parameter",
+						StatusCode::BAD_REQUEST,
+					)
+				}
+				Some(s) => match users.write().await.remove(s) {
 					None => {
 						return warp::reply::with_status(
-							"No \"state\" parameter",
+							"\"state\" parameter not registered",
 							StatusCode::BAD_REQUEST,
 						)
 					}
-					Some(s) => match users.read().unwrap().get(s) {
-						None => {
-							return warp::reply::with_status(
-								"\"state\" parameter not registered",
-								StatusCode::BAD_REQUEST,
-							)
-						}
-						Some(sender) => {
-							sender
-								.send(Message::binary(path.as_str().as_bytes()))
-								.unwrap();
-							return warp::reply::with_status(
-								"You may now close this tab",
-								StatusCode::OK,
-							);
-						}
-					},
-				}
-			},
-		);
+					Some(mut rx) => {
+						let mut messages = stream::iter(
+							[
+								Message::text(code),
+								Message::close_with(
+									WsCloseCode::NormalClosure,
+									"finished sending data",
+								),
+							]
+							.map(Ok),
+						);
+						let _ = rx.send_all(&mut messages).await;
+						let _ = rx.close().await;
 
-	let routes = index.or(socket);
+						return warp::reply::with_status(
+							"You may now close this tab",
+							StatusCode::OK,
+						);
+					}
+				},
+			}
+		});
+
+	let routes = socket.or(index);
 
 	warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
@@ -89,14 +132,82 @@ async fn run() -> Result<()> {
 }
 
 async fn user_connected(mut ws: WebSocket, users: Users) {
-	let message = ws.next().await.unwrap().unwrap();
+	let first_message = if let Ok(Some(Ok(msg))) = timeout(Duration::from_secs(15), ws.next()).await
+	{
+		msg
+	} else {
+		let _ = ws
+			.send(Message::close_with(
+				WsCloseCode::TryAgainLater,
+				"timed out waiting for auth message",
+			))
+			.await;
+		let _ = ws.close().await;
+		return;
+	};
 
-	let message_data = match serde_json::from_slice::<MessageData>(message.as_bytes()) {
+	if !first_message.is_text() {
+		let _ = ws
+			.send(Message::close_with(
+				WsCloseCode::UnsupportedData,
+				"Expected binary encoded values",
+			))
+			.await;
+		let _ = ws.close().await;
+		return;
+	}
+
+	let message_data = match serde_json::from_slice::<MessageData>(first_message.as_bytes()) {
 		Err(_) => {
-			ws.send(Message::close()).await.unwrap();
-			ws.close().await.unwrap();
+			let _ = ws
+				.send(Message::close_with(
+					WsCloseCode::UnsupportedData,
+					"expected valid JSON data",
+				))
+				.await;
+			let _ = ws.close().await;
 			return;
 		}
 		Ok(d) => d,
 	};
+
+	// get the api key to check if the message sent was valid
+	let api_key = env::var("API_KEY").expect("couldn't find api key");
+
+	if message_data.api_key != api_key {
+		let _ = ws
+			.send(Message::close_with(
+				WsCloseCode::Unauthorized,
+				"api_key was invalid",
+			))
+			.await;
+		let _ = ws.close().await;
+		return;
+	}
+
+	let (user_ws_tx, mut user_ws_rx) = ws.split();
+
+	users
+		.write()
+		.await
+		.insert(message_data.state.clone(), user_ws_tx);
+
+	let mut ping_interval = interval(Duration::from_secs(5));
+
+	loop {
+		tokio::select! {
+			Some(Ok(msg)) = user_ws_rx.next() => {
+				if msg.is_close() {
+					users.write().await.remove(message_data.state.as_str());
+					break;
+				}
+			}
+			_ = ping_interval.tick() => {
+				let ping = Message::ping(vec![]);
+				if let Some(tx) = users.write().await.get_mut(message_data.state.as_str()) {
+					let _ = tx.send(ping).await;
+				}
+			}
+		}
+	}
 }
