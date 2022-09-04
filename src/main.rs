@@ -23,7 +23,6 @@ struct MessageData {
 	state: String,
 }
 
-// type Users = Arc<std::sync::RwLock<HashMap<String, oneshot::Sender<Message>>>>;
 type Users = Arc<RwLock<HashMap<String, SplitSink<WebSocket, Message>>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -126,7 +125,12 @@ async fn run() -> Result<()> {
 
 	let routes = socket.or(index);
 
-	warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+	warp::serve(routes)
+		.tls()
+		.cert_path("localhost.pem")
+		.key_path("localhost-key.pem")
+		.run(([127, 0, 0, 1], 3030))
+		.await;
 
 	Ok(())
 }
