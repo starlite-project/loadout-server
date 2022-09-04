@@ -1,10 +1,12 @@
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use anyhow::Result;
+use fern::colors::{Color, ColoredLevelConfig};
 use futures_util::{
 	stream::{self, SplitSink},
 	SinkExt, StreamExt,
 };
+use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use tokio::{
 	runtime::Builder,
@@ -16,6 +18,8 @@ use warp::{
 	ws::{Message, WebSocket},
 	Filter,
 };
+
+const API_KEY: &str = env!("API_KEY");
 
 #[derive(Clone, Serialize, Deserialize)]
 struct MessageData {
@@ -51,7 +55,6 @@ impl From<WsCloseCode> for u16 {
 }
 
 fn main() -> Result<()> {
-	dotenv::dotenv().ok();
 	let rt = Builder::new_multi_thread().enable_all().build()?;
 
 	rt.block_on(run())?;
@@ -60,6 +63,28 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
+	let colors = ColoredLevelConfig {
+		error: Color::Red,
+		warn: Color::Yellow,
+		info: Color::White,
+		debug: Color::Cyan,
+		trace: Color::Magenta,
+	};
+
+	fern::Dispatch::new()
+		.format(move |out, message, record| {
+			out.finish(format_args!(
+				"{}[{}][{}] {}",
+				chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+				record.target(),
+				colors.color(record.level()),
+				message
+			))
+		})
+		.level(LevelFilter::Debug)
+		.chain(fern::Output::from(std::io::stderr()))
+		.apply()?;
+
 	let users = Users::default();
 
 	let users = warp::any().map(move || users.clone());
@@ -77,9 +102,11 @@ async fn run() -> Result<()> {
 		.and(users)
 		.then(|qs: HashMap<String, String>, users: Users| async move {
 			let state = qs.get("state").map(String::as_str);
-			let code = if let Some(c) = qs.get("code").map(String::as_str) {
+			let code = if let Some(c) = qs.get("code").cloned() {
+				log::info!("received code {} from the api", c);
 				c
 			} else {
+				log::error!("didn't receive code from the bungie api");
 				return warp::reply::with_status(
 					"No code received from api",
 					StatusCode::INTERNAL_SERVER_ERROR,
@@ -88,22 +115,25 @@ async fn run() -> Result<()> {
 
 			match state {
 				None => {
+					log::warn!("no state parameter sent from api redirect");
 					return warp::reply::with_status(
 						"No \"state\" parameter",
 						StatusCode::BAD_REQUEST,
-					)
+					);
 				}
 				Some(s) => match users.write().await.remove(s) {
 					None => {
+						log::warn!("state parameter not sent to websocket before redirect");
 						return warp::reply::with_status(
 							"\"state\" parameter not registered",
 							StatusCode::BAD_REQUEST,
-						)
+						);
 					}
 					Some(mut rx) => {
+						log::info!("code {} successfully sent with state {}", code, s);
 						let mut messages = stream::iter(
 							[
-								Message::text(code),
+								Message::text(code + ":" + s),
 								Message::close_with(
 									WsCloseCode::NormalClosure,
 									"finished sending data",
@@ -125,12 +155,18 @@ async fn run() -> Result<()> {
 
 	let routes = socket.or(index);
 
+	log::debug!("server running with bungie api key {}", API_KEY);
+
+	#[cfg(debug_assertions)]
 	warp::serve(routes)
 		.tls()
 		.cert_path("localhost.pem")
 		.key_path("localhost-key.pem")
 		.run(([127, 0, 0, 1], 3030))
 		.await;
+
+	#[cfg(not(debug_assertions))]
+	warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
 	Ok(())
 }
@@ -140,6 +176,7 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 	{
 		msg
 	} else {
+		log::error!("didn't receive auth message within 15 seconds, closing connection to");
 		let _ = ws
 			.send(Message::close_with(
 				WsCloseCode::TryAgainLater,
@@ -151,6 +188,7 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 	};
 
 	if !first_message.is_text() {
+		log::error!("auth message was not sent as text");
 		let _ = ws
 			.send(Message::close_with(
 				WsCloseCode::UnsupportedData,
@@ -163,6 +201,7 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 
 	let message_data = match serde_json::from_slice::<MessageData>(first_message.as_bytes()) {
 		Err(_) => {
+			log::error!("message data was not valid JSON");
 			let _ = ws
 				.send(Message::close_with(
 					WsCloseCode::UnsupportedData,
@@ -175,10 +214,10 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 		Ok(d) => d,
 	};
 
-	// get the api key to check if the message sent was valid
-	let api_key = env::var("API_KEY").expect("couldn't find api key");
+	log::info!("got auth message from {}", message_data.state);
 
-	if message_data.api_key != api_key {
+	if message_data.api_key != API_KEY {
+		log::error!("api key didn't match set key from {}", message_data.state);
 		let _ = ws
 			.send(Message::close_with(
 				WsCloseCode::Unauthorized,
@@ -202,11 +241,13 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 		tokio::select! {
 			Some(Ok(msg)) = user_ws_rx.next() => {
 				if msg.is_close() {
+					log::info!("was sent close code, closing connection {}", message_data.state);
 					users.write().await.remove(message_data.state.as_str());
 					break;
 				}
 			}
 			_ = ping_interval.tick() => {
+				log::debug!("sending ping to connection {}", message_data.state);
 				let ping = Message::ping(vec![]);
 				if let Some(tx) = users.write().await.get_mut(message_data.state.as_str()) {
 					let _ = tx.send(ping).await;
