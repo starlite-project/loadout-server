@@ -2,10 +2,7 @@ use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use fern::colors::{Color, ColoredLevelConfig};
-use futures_util::{
-	stream::{self, SplitSink},
-	SinkExt, StreamExt,
-};
+use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -131,18 +128,8 @@ async fn run() -> Result<()> {
 					}
 					Some(mut rx) => {
 						log::info!("code {} successfully sent with state {}", code, s);
-						let mut messages = stream::iter(
-							[
-								Message::text(code + ":" + s),
-								Message::close_with(
-									WsCloseCode::NormalClosure,
-									"finished sending data",
-								),
-							]
-							.map(Ok),
-						);
-						let _ = rx.send_all(&mut messages).await;
-						let _ = rx.close().await;
+						let _ = rx.send(Message::text(code + ":" + s)).await;
+						// rely on my application to send close code.
 
 						return warp::reply::with_status(
 							"You may now close this tab",
@@ -165,6 +152,7 @@ async fn run() -> Result<()> {
 		.run(([127, 0, 0, 1], 3030))
 		.await;
 
+	// don't use local certifications as we'll be going through nginx
 	#[cfg(not(debug_assertions))]
 	warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
@@ -243,7 +231,7 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 				if msg.is_close() {
 					log::info!("was sent close code, closing connection {}", message_data.state);
 					users.write().await.remove(message_data.state.as_str());
-					break;
+					return;
 				}
 			}
 			_ = ping_interval.tick() => {
