@@ -5,6 +5,8 @@ ARG MUSL_TARGET="x86_64-linux-musl"
 FROM alpine:latest as build
 ARG RUST_TARGET
 ARG MUSL_TARGET
+ARG API_KEY
+ENV API_KEY=$API_KEY
 
 RUN apk upgrade && \
     apk add curl gcc musl-dev && \
