@@ -1,5 +1,7 @@
 FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS build
 ARG TARGETPLATFORM
+ARG API_KEY
+ENV API_KEY $API_KEY
 
 RUN case "$TARGETPLATFORM" in \
         "linux/arm/v7") echo armv7-unknown-linux-musleabihf > /rust_target.txt ;; \
