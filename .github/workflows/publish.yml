@@ -10,6 +10,7 @@ on:
       - "Dockerfile"
       - "Cargo.toml"
       - "Cargo.lock"
+      - ".github/workflows/publish.yml"
 
 jobs:
   publish:
