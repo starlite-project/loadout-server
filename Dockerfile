@@ -18,7 +18,7 @@ COPY Cargo.toml Cargo.lock empty .env* build.rs ./
 COPY src ./src
 
 RUN cargo build --release --target $(cat /rust_target.txt)
-RUN cp target/$(cat rust_target.txt)/release/loadout-server .
+RUN cp target/$(cat /rust_target.txt)/release/loadout-server .
 
 FROM alpine:latest
 ENV \
