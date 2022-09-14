@@ -1,1 +1,0 @@
-This isn't actually empty, but I needed a file that will always exist for when CI creates the docker image, because the .env file won't be there

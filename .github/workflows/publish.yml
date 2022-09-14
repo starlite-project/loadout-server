@@ -43,8 +43,6 @@ jobs:
           push: true
           context: .
           platforms: linux/arm/v7
-          build-args: |
-            API_KEY=${{ secrets.API_KEY }}
           tags: |
             starlightpyro/loadout-server:latest
             ghcr.io/starlite-project/loadout-server:latest

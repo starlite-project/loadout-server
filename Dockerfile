@@ -1,7 +1,5 @@
-FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS build
+FROM --platform=$BUILDPLATFORM rust:latest AS build
 ARG TARGETPLATFORM
-ARG API_KEY
-ENV API_KEY $API_KEY
 
 RUN case "$TARGETPLATFORM" in \
         "linux/arm/v7") echo armv7-unknown-linux-musleabihf > /rust_target.txt ;; \
@@ -9,12 +7,12 @@ RUN case "$TARGETPLATFORM" in \
         *) exit 1 ;; \
     esac
 RUN rustup target add $(cat /rust_target.txt)
-RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools && \
+RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools dumb-init && \
     ln -s /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-musleabihf-gcc
 WORKDIR /app
 
 COPY .cargo ./.cargo
-COPY Cargo.toml Cargo.lock empty .env* build.rs ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 RUN cargo build --release --target $(cat /rust_target.txt)
@@ -24,6 +22,9 @@ FROM alpine:latest
 ENV \
     RUST_BACKTRACE=full
 WORKDIR /app
-COPY --from=build /app/loadout-server ./
 
-ENTRYPOINT ["./loadout-server"]
+COPY --from=build /app/loadout-server ./
+COPY --from=build /usr/bin/dumb-init /usr/bin/dumb-init
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["./loadout-server"]

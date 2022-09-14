@@ -16,8 +16,6 @@ use warp::{
 	Filter,
 };
 
-const API_KEY: &str = env!("API_KEY");
-
 #[derive(Clone, Serialize, Deserialize)]
 struct MessageData {
 	api_key: String,
@@ -52,6 +50,13 @@ impl From<WsCloseCode> for u16 {
 }
 
 fn main() -> Result<()> {
+	dotenv::dotenv().ok(); // fallible, but we don't care if it does
+
+	assert!(
+		env::var("API_KEY").is_ok(),
+		"no API_KEY env variable present"
+	);
+
 	let rt = Builder::new_multi_thread().enable_all().build()?;
 
 	rt.block_on(run())?;
@@ -142,7 +147,10 @@ async fn run() -> Result<()> {
 
 	let routes = socket.or(index);
 
-	log::debug!("server running with bungie api key {}", API_KEY);
+	log::debug!(
+		"server running with bungie api key {}",
+		env::var("API_KEY")?
+	);
 
 	#[cfg(debug_assertions)]
 	warp::serve(routes)
@@ -160,6 +168,12 @@ async fn run() -> Result<()> {
 }
 
 async fn user_connected(mut ws: WebSocket, users: Users) {
+	// let api_key = env::var("API_KEY").expect("no API_KEY set in process env");
+	let api_key = match env::var("API_KEY") {
+		Ok(v) => v,
+		Err(_) => unsafe { std::hint::unreachable_unchecked() },
+	};
+
 	let first_message = if let Ok(Some(Ok(msg))) = timeout(Duration::from_secs(15), ws.next()).await
 	{
 		msg
@@ -204,7 +218,7 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 
 	log::info!("got auth message from {}", message_data.state);
 
-	if message_data.api_key != API_KEY {
+	if message_data.api_key != api_key {
 		log::error!("api key didn't match set key from {}", message_data.state);
 		let _ = ws
 			.send(Message::close_with(
