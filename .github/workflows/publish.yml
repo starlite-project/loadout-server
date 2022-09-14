@@ -42,7 +42,7 @@ jobs:
         with:
           push: true
           context: .
-          platforms: linux/amd64
+          # platforms: linux/amd64
           build-args: |
             API_KEY=${{ secrets.API_KEY }}
           tags: |
@@ -54,7 +54,7 @@ jobs:
         with:
           push: true
           context: .
-          platforms: linux/arm/v7
+          # platforms: linux/arm/v7
           build-args: |
             API_KEY=${{ secrets.API_KEY }}
             RUST_TARGET=armv7-unknown-linux
