@@ -6,10 +6,10 @@ ENV API_KEY ${API_KEY}
 RUN user=root cargo new --bin loadout-server
 WORKDIR /loadout-server
 
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-COPY ./.env ./.env
-COPY ./build.rs ./build.rs
+COPY Cargo.lock Cargo.lock
+COPY Cargo.toml Cargo.toml
+COPY empty .env* ./
+COPY build.rs build.rs
 
 RUN cargo build --release
 RUN rm src/*.rs
