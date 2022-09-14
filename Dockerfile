@@ -7,7 +7,7 @@ RUN case "$TARGETPLATFORM" in \
         *) exit 1 ;; \
     esac
 RUN rustup target add $(cat /rust_target.txt)
-RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools dumb-init && \
+RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools && \
     ln -s /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-musleabihf-gcc
 WORKDIR /app
 
@@ -25,6 +25,4 @@ WORKDIR /app
 
 COPY --from=build /app/loadout-server ./
 
-# ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-# CMD ["./loadout-server"]
 ENTRYPOINT ["./loadout-server"]
