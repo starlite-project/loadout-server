@@ -36,7 +36,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ github.token }}
 
-      - name: Build and push Starlight Docker image
+      - name: Build and push loadout-server AMD64 Docker image
         uses: docker/build-push-action@v2.7.0
         with:
           push: true
@@ -44,5 +44,16 @@ jobs:
           build-args: |
             API_KEY=${{ secrets.API_KEY }}
           tags: |
-            starlightpyro/loadout-server:latest
-            ghcr.io/starlite-project/loadout-server:latest
+            starlightpyro/loadout-server:amd64
+            ghcr.io/starlite-project/loadout-server:amd64
+      
+      - name: Build and push loadout-server armv8 Docker image
+        uses: docker/build-push-action@v2.7.0
+        with:
+          push: true
+          context: .
+          build-args: |
+            API_KEY=${{ secrets.API_KEY }}
+            RUST_TARGET=aarch64-unknown-linux-musl
+            MUSL_TARGET=aarch64-linux-musl
+      
