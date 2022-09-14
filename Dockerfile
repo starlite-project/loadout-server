@@ -24,7 +24,7 @@ ENV \
 WORKDIR /app
 
 COPY --from=build /app/loadout-server ./
-COPY --from=build /usr/bin/dumb-init /usr/bin/dumb-init
 
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-CMD ["./loadout-server"]
+# ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+# CMD ["./loadout-server"]
+ENTRYPOINT ["./loadout-server"]
