@@ -56,4 +56,6 @@ jobs:
             API_KEY=${{ secrets.API_KEY }}
             RUST_TARGET=aarch64-unknown-linux-musl
             MUSL_TARGET=aarch64-linux-musl
-      
+          tags: |
+            starlightpyro/loadout-server:armv8
+            ghcr.io/starlite-project/loadout-server:armv8
