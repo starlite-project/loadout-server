@@ -12,15 +12,13 @@ COPY Cargo.toml Cargo.toml
 COPY empty .env* ./
 COPY build.rs build.rs
 
-# RUN cargo build --release
-RUN --mount=type=tmpfs,target=/root/.cargo cargo build --release
+RUN cargo build --release
 RUN rm src/*.rs
 
 COPY ./src ./src
 
 RUN rm ./target/release/deps/loadout_server*
-RUN cargo build --release && \
-    actual-strip ./target/release/deps/loadout-server
+RUN cargo build --release
 
 FROM debian:buster-slim
 
