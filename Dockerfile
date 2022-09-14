@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:nightly AS build
+FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS build
 ARG TARGETPLATFORM
 
 RUN case "$TARGETPLATFORM" in \
