@@ -7,14 +7,15 @@ RUN case "$TARGETPLATFORM" in \
         *) exit 1 ;; \
     esac
 RUN rustup target add $(cat /rust_target.txt)
-RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf
+RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools && \
+    ln -s /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-musleabihf-gcc
 WORKDIR /app
 
 COPY .cargo ./.cargo
 COPY Cargo.toml Cargo.lock empty .env* build.rs ./
 COPY src ./src
 
-RUN cargo +nightly build -Zbuild-std --release --target $(cat /rust_target.txt)
+RUN cargo build --release --target $(cat /rust_target.txt)
 RUN cp target/$(cat rust_target.txt)/release/loadout-server .
 
 FROM alpine:latest
