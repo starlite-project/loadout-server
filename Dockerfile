@@ -9,8 +9,8 @@ RUN case "$TARGETPLATFORM" in \
         *) exit 1 ;; \
     esac
 RUN rustup target add $(cat /rust_target.txt)
-RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools && \
-    ln -s /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-musleabihf-gcc
+RUN apt-get update && apt-get -y install binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf musl-tools
+    # ln -s /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-musleabihf-gcc
 WORKDIR /app
 
 COPY .cargo ./.cargo
