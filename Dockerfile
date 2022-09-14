@@ -17,7 +17,7 @@ COPY src ./src
 RUN cargo build --release --target $(cat /rust_target.txt)
 RUN cp target/$(cat rust_target.txt)/release/loadout-server .
 
-FROM apline:latest
+FROM alpine:latest
 ENV \
     RUST_BACKTRACE=full
 WORKDIR /app
