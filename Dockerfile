@@ -1,4 +1,5 @@
-FROM rust:latest as build
+# FROM rust:latest as build
+FROM arm32v7/rust:latest as build
 
 ARG API_KEY
 ENV API_KEY ${API_KEY}
