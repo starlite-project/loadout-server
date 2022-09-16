@@ -152,7 +152,7 @@ async fn run() -> Result<()> {
 		env::var("API_KEY")?
 	);
 
-	#[cfg(debug_assertions)]
+	#[cfg(feature = "tls")]
 	warp::serve(routes)
 		.tls()
 		.cert_path("localhost.pem")
@@ -161,7 +161,7 @@ async fn run() -> Result<()> {
 		.await;
 
 	// don't use local certifications as we'll be going through nginx
-	#[cfg(not(debug_assertions))]
+	#[cfg(not(feature = "tls"))]
 	warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 
 	Ok(())
