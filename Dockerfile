@@ -4,7 +4,7 @@ ARG TARGETPLATFORM
 RUN apt-get update && \
     case "$TARGETPLATFORM" in \
     "linux/arm/v7") echo armv7-unknown-linux-musleabihf > /rust_target.txt && apt-get install -y binutils-arm-linux-gnueabihf ;; \
-    "linux/arm/v6") echo arm-unknown-linux-musleabi > /rust_target.txt ;; \
+    "linux/arm/v6") echo arm-unknown-linux-musleabi > /rust_target.txt && apt-get install -y binutils-arm-linux-gnueabihf ;; \
     "linux/aarch64") echo aarch64-unknown-linux-gnu > /rust_target.txt ;; \
     "linux/amd64") echo x86_64-unknown-linux-gnu > /rust_target.txt ;; \
     *) exit 1 ;; \
