@@ -53,7 +53,7 @@ fn main() -> Result<()> {
 	dotenv::dotenv().ok(); // fallible, but we don't care if it does
 
 	assert!(
-		env::var("API_KEY").is_ok(),
+		env::var("API_KEYS").is_ok(),
 		"no API_KEY env variable present"
 	);
 
@@ -169,8 +169,8 @@ async fn run() -> Result<()> {
 
 async fn user_connected(mut ws: WebSocket, users: Users) {
 	// let api_key = env::var("API_KEY").expect("no API_KEY set in process env");
-	let api_key = match env::var("API_KEY") {
-		Ok(v) => v,
+	let api_keys = match env::var("API_KEYS") {
+		Ok(v) => v.split(",").map(ToOwned::to_owned).collect::<Vec<_>>(),
 		Err(_) => unsafe { std::hint::unreachable_unchecked() },
 	};
 
@@ -218,7 +218,7 @@ async fn user_connected(mut ws: WebSocket, users: Users) {
 
 	log::info!("got auth message from {}", message_data.state);
 
-	if message_data.api_key != api_key {
+	if !api_keys.contains(&message_data.api_key) {
 		log::error!("api key didn't match set key from {}", message_data.state);
 		let _ = ws
 			.send(Message::close_with(
