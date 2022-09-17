@@ -54,7 +54,7 @@ fn main() -> Result<()> {
 
 	assert!(
 		env::var("API_KEYS").is_ok(),
-		"no API_KEY env variable present"
+		"no API_KEYS env variable present"
 	);
 
 	let rt = Builder::new_multi_thread().enable_all().build()?;
@@ -148,8 +148,8 @@ async fn run() -> Result<()> {
 	let routes = socket.or(index);
 
 	log::debug!(
-		"server running with bungie api key {}",
-		env::var("API_KEY")?
+		"server running with bungie api keys {}",
+		env::var("API_KEYS")?
 	);
 
 	#[cfg(feature = "tls")]
