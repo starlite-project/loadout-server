@@ -33,3 +33,5 @@ COPY --from=build /app/loadout-server ./
 RUN ls .
 
 ENTRYPOINT ["./loadout-server"]
+
+HEALTHCHECK CMD curl --fail http://localhost:3030/ || exit 1

@@ -6,18 +6,20 @@ use fern::colors::{Color, ColoredLevelConfig};
 use log::LevelFilter;
 use tokio::runtime::Builder;
 
+mod health_check;
 mod main_page;
-mod params;
-mod socket;
+mod redirect;
+mod retrieval;
 mod state;
 
 fn main() -> Result<()> {
 	dotenv::dotenv().ok();
 
-	assert!(
-		env::var("API_KEYS").is_ok(),
-		"no API_KEYS env variable present"
-	);
+	let keys = env::var("API_KEYS")
+		.expect("no API_KEYS env variable present")
+		.split(",")
+		.map(ToOwned::to_owned)
+		.collect();
 
 	let rt = Builder::new_multi_thread().enable_all().build()?;
 
@@ -43,24 +45,25 @@ fn main() -> Result<()> {
 		.chain(fern::Output::from(std::io::stderr()))
 		.apply()?;
 
-	rt.block_on(run())?;
+	rt.block_on(run(keys))?;
 
 	Ok(())
 }
 
-async fn run() -> Result<()> {
+async fn run(keys: Vec<String>) -> Result<()> {
 	axum::Server::bind(&([0, 0, 0, 0], 3030).into())
-		.serve(app().into_make_service())
+		.serve(app(keys).into_make_service())
 		.await?;
 
 	Ok(())
 }
 
-fn app() -> Router {
-	let state = Extension(Arc::new(state::State::default()));
+fn app(keys: Vec<String>) -> Router {
+	let state = Extension(Arc::new(state::State::new(keys)));
 	Router::new()
 		.route("/", get(main_page::handler))
-		.route("/redirect", get(params::handler))
-		.route("/socket", get(socket::handler))
+		.route("/redirect", get(redirect::handler))
+		.route("/retrieval", get(retrieval::handler))
+		.route("/health-check", get(health_check::handler))
 		.layer(state)
 }
