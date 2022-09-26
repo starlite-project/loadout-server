@@ -23,15 +23,13 @@ COPY src ./src
 
 RUN cargo build --release --target $(cat /rust_target.txt)
 RUN cp target/$(cat /rust_target.txt)/release/loadout-server .
-RUN ls .
 
 FROM alpine:latest
 ENV \
     RUST_BACKTRACE=full
 
-COPY --from=build /app/loadout-server ./
-RUN ls .
+COPY --from=build /app/loadout-server* ./
 
 ENTRYPOINT ["./loadout-server"]
 
-HEALTHCHECK CMD curl --fail http://localhost:3030/ || exit 1
+HEALTHCHECK CMD curl --fail http://localhost:3030/health-check/ || exit 1

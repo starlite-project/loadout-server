@@ -8,6 +8,7 @@ use axum::{
 	Extension,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::state::State;
 
@@ -33,20 +34,16 @@ pub async fn handler(
 		}
 	};
 
-	// match state.received_users.write().await.remove(&state_value) {
-	// 	None => serde_json::to_string(&serde_json::Value::Null)
-	// 		.unwrap_or_default()
-	// 		.into_response(),
-	// 	Some(code) => serde_json::to_string(&serde_json::Value::String(code))
-	// 		.unwrap_or_default()
-	// 		.into_response(),
-	// }
-
-	state
+	let value = state
 		.received_users
 		.write()
 		.await
 		.remove(&state_value)
-		.unwrap_or_default()
-		.into_response()
+		.map(Value::String)
+		.unwrap_or(Value::Null);
+
+	match serde_json::to_string(&value) {
+		Ok(v) => v.into_response(),
+		Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", e)).into_response(),
+	}
 }
